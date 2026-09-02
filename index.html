@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Оценка звонков — Альфаком</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+:root{--bg:#0a0a0f;--surface:rgba(255,255,255,0.03);--surface-hover:rgba(255,255,255,0.06);--border:rgba(255,255,255,0.08);--border-strong:rgba(255,255,255,0.15);--text-primary:#f0f0f5;--text-secondary:#8b8b9a;--text-tertiary:#5a5a6a;--positive:#22c55e;--warning:#f59e0b;--danger:#ef4444;--chart-1:#6366f1;--chart-2:#ec4899;--chart-3:#22c55e;--chart-4:#a855f7;--chart-5:#6b7280;--gradient-1:linear-gradient(135deg,#6366f1 0%,#a855f7 100%);--gradient-2:linear-gradient(135deg,#ec4899 0%,#f59e0b 100%);--gradient-3:linear-gradient(135deg,#22c55e 0%,#06b6d4 100%);--glass:rgba(255,255,255,0.04);--glass-border:rgba(255,255,255,0.08)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text-primary);line-height:1.5;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(99,102,241,0.15),transparent),radial-gradient(ellipse 60% 40% at 80% 100%,rgba(236,72,153,0.1),transparent);pointer-events:none;z-index:0}
+.app{max-width:1200px;margin:0 auto;padding:24px;position:relative;z-index:1}
+.nav-bar{display:flex;gap:8px;margin-bottom:24px;padding:6px;background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;backdrop-filter:blur(20px);width:fit-content}
+.nav-btn{padding:10px 20px;border:none;background:transparent;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-secondary);border-radius:12px;transition:all .2s;position:relative}
+.nav-btn.active{background:var(--gradient-1);color:#fff;box-shadow:0 4px 20px rgba(99,102,241,0.3)}
+.nav-btn:hover:not(.active){color:var(--text-primary);background:var(--surface-hover)}
+.screen{display:none}
+.screen.active{display:block;animation:fadeIn .4s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.card{background:var(--glass);border:1px solid var(--glass-border);border-radius:20px;padding:24px;backdrop-filter:blur(20px);margin-bottom:16px;box-shadow:0 8px 32px rgba(0,0,0,0.2)}
+.card-title{font-size:14px;font-weight:700;margin-bottom:16px;color:var(--text-primary);letter-spacing:-0.2px}
+.form-row{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.form-field{flex:1;min-width:200px}
+.form-field label{display:block;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.form-field input,.form-field select,.transcript-area{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:12px;font-size:14px;background:rgba(255,255,255,0.03);color:var(--text-primary);transition:all .2s}
+.transcript-area{min-height:200px;resize:vertical;line-height:1.7;font-family:inherit}
+.form-field input:focus,.form-field select:focus,.transcript-area:focus{outline:none;border-color:rgba(99,102,241,0.5);box-shadow:0 0 0 3px rgba(99,102,241,0.1)}
+.btn-primary{padding:12px 24px;border:none;border-radius:12px;background:var(--gradient-1);color:#fff;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 4px 20px rgba(99,102,241,0.3)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(99,102,241,0.4)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-ghost{padding:10px 16px;border:1px solid var(--border);border-radius:12px;background:transparent;font-size:12px;font-weight:600;cursor:pointer;color:var(--text-secondary);transition:all .2s}
+.btn-ghost:hover{border-color:var(--border-strong);color:var(--text-primary);background:var(--surface-hover)}
+.btn-danger{padding:8px 14px;border:1px solid rgba(239,68,68,0.3);border-radius:10px;background:rgba(239,68,68,0.08);font-size:12px;font-weight:600;cursor:pointer;color:var(--danger);transition:all .2s}
+.btn-danger:hover{background:rgba(239,68,68,0.15)}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-bottom:20px}
+.kpi-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:20px;padding:20px;text-align:center;backdrop-filter:blur(20px);transition:all .2s}
+.kpi-card:hover{transform:translateY(-2px);border-color:var(--border-strong)}
+.kpi-value{font-size:32px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;background:var(--gradient-1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.kpi-card:nth-child(2) .kpi-value{background:var(--gradient-2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.kpi-card:nth-child(3) .kpi-value{background:var(--gradient-3);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.kpi-card:nth-child(4) .kpi-value{background:linear-gradient(135deg,#ef4444,#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.kpi-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-top:8px;color:var(--text-secondary)}
+.tabs{display:flex;gap:4px;margin-bottom:16px;padding:4px;background:var(--glass);border:1px solid var(--glass-border);border-radius:14px;width:fit-content;backdrop-filter:blur(20px)}
+.tab-btn{padding:10px 18px;border:none;background:transparent;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-secondary);border-radius:10px;transition:all .2s}
+.tab-btn.active{background:rgba(255,255,255,0.08);color:var(--text-primary);box-shadow:0 2px 8px rgba(0,0,0,0.2)}
+.tab-btn:hover:not(.active){color:var(--text-primary)}
+.tab-panel{display:none}
+.tab-panel.active{display:block;animation:fadeIn .3s ease}
+.crit-list{display:flex;flex-direction:column;gap:8px}
+.crit-row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;border:1px solid var(--glass-border);cursor:pointer;transition:all .2s;background:var(--glass);backdrop-filter:blur(10px)}
+.crit-row:hover{background:var(--surface-hover);transform:translateX(4px)}
+.crit-num{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;color:#fff;background:var(--gradient-1)}
+.crit-info{flex:1;min-width:0}
+.crit-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crit-cat{font-size:11px;color:var(--text-tertiary);margin-top:2px}
+.crit-bar-bg{width:60px;height:6px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden;flex-shrink:0}
+.crit-bar-fill{height:100%;border-radius:3px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.crit-score{font-size:16px;font-weight:800;width:32px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0}
+.good .crit-num{background:var(--gradient-3)}.good .crit-score{color:var(--positive)}.good .crit-bar-fill{background:var(--gradient-3)}.good{background:rgba(34,197,94,0.04);border-color:rgba(34,197,94,0.15)}
+.mid .crit-num{background:var(--gradient-2)}.mid .crit-score{color:var(--warning)}.mid .crit-bar-fill{background:var(--gradient-2)}.mid{background:rgba(245,158,11,0.04);border-color:rgba(245,158,11,0.15)}
+.bad .crit-num{background:linear-gradient(135deg,#ef4444,#dc2626)}.bad .crit-score{color:var(--danger)}.bad .crit-bar-fill{background:linear-gradient(135deg,#ef4444,#dc2626)}.bad{background:rgba(239,68,68,0.04);border-color:rgba(239,68,68,0.15)}
+.data-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.data-table th{padding:12px 16px;text-align:left;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border);background:transparent}
+.data-table td{padding:12px 16px;border-bottom:1px solid var(--border);color:var(--text-primary)}
+.data-table tr:hover td{background:rgba(255,255,255,0.02)}
+.data-table tbody tr{transition:all .15s}
+.score-cell{font-weight:700;text-align:center;border-radius:6px;padding:4px 8px;display:inline-block;min-width:28px;font-size:12px}
+.score-good{background:rgba(34,197,94,0.12);color:var(--positive)}
+.score-mid{background:rgba(245,158,11,0.12);color:var(--warning)}
+.score-bad{background:rgba(239,68,68,0.12);color:var(--danger)}
+.filter-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.filter-bar select,.filter-bar input{padding:8px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;background:rgba(255,255,255,0.03);color:var(--text-primary)}
+.filter-label{font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px}
+.chart-svg{width:100%;height:260px;filter:drop-shadow(0 0 20px rgba(99,102,241,0.15))}
+.chart-bar-svg{width:100%;height:280px;filter:drop-shadow(0 0 20px rgba(99,102,241,0.1))}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:768px){.two-col{grid-template-columns:1fr}.kpi-row{grid-template-columns:1fr 1fr}}
+.legend{display:flex;gap:16px;margin-top:10px;font-size:12px;justify-content:center;color:var(--text-secondary)}
+.legend-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.rec-card{border-radius:14px;padding:16px 18px;margin-bottom:10px;border:1px solid var(--glass-border);border-left-width:3px;background:var(--glass);backdrop-filter:blur(10px);transition:all .2s}
+.rec-card:hover{transform:translateX(4px)}
+.rec-card.crit{border-left-color:var(--danger);background:rgba(239,68,68,0.04)}
+.rec-card.warn{border-left-color:var(--warning);background:rgba(245,158,11,0.04)}
+.rec-card.good{border-left-color:var(--positive);background:rgba(34,197,94,0.04)}
+.rec-title{font-size:13px;font-weight:700;margin-bottom:4px}
+.rec-text{font-size:13px;color:var(--text-secondary);line-height:1.6}
+.rec-meta{font-size:11px;font-weight:600;margin-top:8px;color:var(--text-tertiary)}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);z-index:99;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal-box{background:var(--glass);border:1px solid var(--glass-border);border-radius:24px;padding:28px;max-width:420px;width:90%;position:relative;animation:fadeIn .25s ease;backdrop-filter:blur(30px);box-shadow:0 24px 48px rgba(0,0,0,.4)}
+.modal-close{position:absolute;top:12px;right:16px;background:none;border:none;font-size:24px;cursor:pointer;color:var(--text-secondary);line-height:1;transition:color .2s}
+.modal-close:hover{color:var(--text-primary)}
+.modal-score{font-size:40px;font-weight:800;margin:8px 0 10px;background:var(--gradient-1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.modal-box h4{margin:0 0 6px 0;font-size:16px;font-weight:700}
+.modal-box p{margin:0;font-size:13px;color:var(--text-secondary);line-height:1.6}
+.modal-tag{display:inline-block;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:8px;letter-spacing:.5px}
+.history-item{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;border:1px solid var(--glass-border);margin-bottom:8px;cursor:pointer;transition:all .2s;background:var(--glass);backdrop-filter:blur(10px)}
+.history-item:hover{background:var(--surface-hover);transform:translateX(4px)}
+.history-date{font-size:12px;color:var(--text-tertiary);min-width:80px;font-weight:500}
+.history-emp{font-size:14px;font-weight:600;flex:1}
+.history-score{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.history-eff{font-size:12px;color:var(--text-tertiary);min-width:60px;text-align:right;font-weight:500}
+.loading-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.loading-overlay.show{display:flex}
+.spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,.1);border-top-color:#6366f1;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:14px;font-weight:600;color:var(--text-primary)}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-tertiary);font-size:14px}
+.badge{display:inline-block;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.badge-online{background:rgba(34,197,94,.12);color:var(--positive)}
+.badge-offline{background:rgba(239,68,68,.12);color:var(--danger)}
+.status-bar{display:flex;align-items:center;gap:10px;margin-bottom:16px;font-size:13px;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;width:fit-content;backdrop-filter:blur(10px)}
+.cabinet-header{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+.cabinet-avatar{width:56px;height:56px;border-radius:16px;background:var(--gradient-1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;box-shadow:0 8px 24px rgba(99,102,241,0.3)}
+.cabinet-name{font-size:18px;font-weight:700}
+.cabinet-role{font-size:13px;color:var(--text-secondary)}
+.mini-chart{width:100%;height:140px;filter:drop-shadow(0 0 12px rgba(99,102,241,0.1))}
+.cab-bar-bg{width:100%;height:8px;border-radius:4px;background:rgba(255,255,255,0.06);overflow:hidden;margin-top:6px}
+.cab-bar-fill{height:100%;border-radius:4px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.cab-crit-row{padding:10px 0;border-bottom:1px solid var(--border)}
+.cab-crit-row:last-child{border-bottom:none}
+#analytics-chart svg{filter:drop-shadow(0 0 16px rgba(99,102,241,0.1))}
+</style>
+<base target="_blank">
+</head>
+<body>
+<div class="app">
+<div class="loading-overlay" id="loading-overlay"><div class="spinner"></div><div class="loading-text">Анализируем текст...</div></div>
+<div class="nav-bar">
+  <button class="nav-btn active" data-nav="evaluate">📝 Оценить</button>
+  <button class="nav-btn" data-nav="history">📚 История</button>
+  <button class="nav-btn" data-nav="analytics">📊 Аналитика</button>
+  <button class="nav-btn" data-nav="cabinet">👤 Кабинет</button>
+</div>
+
+<!-- EVALUATE SCREEN -->
+<div class="screen active" id="screen-evaluate">
+  <div class="card">
+    <div class="status-bar">
+      <span>База данных:</span>
+      <span class="badge badge-offline" id="db-status">OFFLINE (localStorage)</span>
+      <button class="btn-ghost" style="padding:4px 10px;font-size:11px" onclick="showSetup()">⚙️ Подключить Supabase</button>
+    </div>
+    <div class="form-row">
+      <div class="form-field"><label>Сотрудник</label><input type="text" id="inp-employee" placeholder="Имя менеджера" value="Екатерина"></div>
+      <div class="form-field"><label>Дата звонка</label><input type="date" id="inp-date" value="2026-09-02"></div>
+      <div class="form-field"><label>Компания клиента</label><input type="text" id="inp-client" placeholder="Название клиента"></div>
+    </div>
+    <label style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px;display:block">Текстовая расшифровка звонка</label>
+    <textarea class="transcript-area" id="transcript-input" placeholder="Вставьте текст расшифровки звонка здесь..."></textarea>
+    <div style="margin-top:16px;padding:20px;background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;backdrop-filter:blur(10px)">
+      <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:var(--text-primary)">🎙️ Распознавание аудио (Yandex SpeechKit)</div>
+      <div class="form-row" style="margin-bottom:10px">
+        <div class="form-field" style="flex:2">
+          <label>Загрузите аудио-файл</label>
+          <input type="file" id="audio-input" accept="audio/*" style="padding:8px">
+        </div>
+        <div class="form-field" style="flex:3">
+          <label>API-ключ Yandex SpeechKit <a href="#" onclick="showYandexHelp();return false;" style="color:var(--chart-1);font-size:11px">Как получить?</a></label>
+          <input type="password" id="yandex-api-key" placeholder="Api-Key XXX..." value="">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn-primary" id="btn-transcribe" onclick="transcribeAudio()">🎤 Расшифровать аудио</button>
+        <span id="transcribe-status" style="font-size:12px;color:var(--text-secondary)"></span>
+      </div>
+      <div id="transcribe-progress" style="display:none;margin-top:10px">
+        <div style="width:100%;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">
+          <div style="width:0%;height:100%;background:var(--gradient-1);border-radius:2px;transition:width .3s" id="transcribe-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn-primary" onclick="evaluateCall()">Оценить звонок</button>
+      <button class="btn-ghost" onclick="clearForm()">Очистить</button>
+    </div>
+  </div>
+  <div id="result-area" style="display:none">
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-value" id="kpi-total" style="color:var(--chart-1)">0/100</div><div class="kpi-label">Суммарный балл</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpi-eff" style="color:var(--warning)">0%</div><div class="kpi-label">Эффективность</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpi-avg" style="color:var(--chart-1)">0.0</div><div class="kpi-label">Средний балл</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpi-crit" style="color:var(--danger)">0</div><div class="kpi-label">Крит. провалов</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpi-words" style="color:var(--text-secondary)">0</div><div class="kpi-label">Слов</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpi-questions" style="color:var(--chart-4)">0</div><div class="kpi-label">Вопросов</div></div>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="overview">Обзор</button>
+      <button class="tab-btn" data-tab="criteria">Критерии</button>
+      <button class="tab-btn" data-tab="recommend">Рекомендации</button>
+    </div>
+    <div id="tab-overview" class="tab-panel active">
+      <div class="two-col">
+        <div class="card"><div class="card-title">Радар: оценки по критериям</div><svg class="chart-svg" viewBox="0 0 300 240" id="radar-svg"></svg><div class="legend"><span><span class="legend-dot" style="background:var(--positive)"></span>≥8</span><span><span class="legend-dot" style="background:var(--warning)"></span>6–7</span><span><span class="legend-dot" style="background:var(--danger)"></span>&lt;6</span></div></div>
+        <div class="card"><div class="card-title">Распределение по этапам</div><svg class="chart-bar-svg" viewBox="0 0 300 240" id="bar-svg"></svg></div>
+      </div>
+      <div class="card"><div class="card-title">Сильные стороны vs провалы</div><div class="two-col"><div><div style="font-size:12px;font-weight:700;color:var(--positive);margin-bottom:6px">✅ Сильные стороны</div><div id="strong-list"></div></div><div><div style="font-size:12px;font-weight:700;color:var(--danger);margin-bottom:6px">❌ Критические провалы</div><div id="weak-list"></div></div></div></div>
+    </div>
+    <div id="tab-criteria" class="tab-panel"><div class="card"><div class="card-title">Детализация по критериям (нажмите для подробностей)</div><div class="crit-list" id="criteria-list"></div></div></div>
+    <div id="tab-recommend" class="tab-panel"><div class="card"><div class="card-title">План действий</div><div id="rec-list"></div></div></div>
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn-primary" onclick="saveToHistory()">💾 Сохранить в историю</button><button class="btn-ghost" onclick="exportResult()">📥 Экспорт JSON</button></div>
+  </div>
+</div>
+
+<!-- HISTORY SCREEN -->
+<div class="screen" id="screen-history">
+  <div class="card">
+    <div class="card-title">Фильтры</div>
+    <div class="filter-bar">
+      <span class="filter-label">Сотрудник:</span><select id="filter-emp" onchange="renderHistory()"><option value="">Все</option></select>
+      <span class="filter-label">Проблема:</span><select id="filter-prob" onchange="renderHistory()"><option value="">Все</option><option value="good">Сильная сторона</option><option value="mid">Зона роста</option><option value="bad">Критический провал</option></select>
+      <span class="filter-label">С:</span><input type="date" id="filter-from" onchange="renderHistory()">
+      <span class="filter-label">По:</span><input type="date" id="filter-to" onchange="renderHistory()">
+      <button class="btn-danger" onclick="clearHistory()">Очистить всё</button>
+    </div>
+  </div>
+  <div id="history-list"></div>
+</div>
+
+<!-- ANALYTICS SCREEN -->
+<div class="screen" id="screen-analytics">
+  <div class="card"><div class="card-title">Сравнение сотрудников</div><div id="analytics-chart"></div></div>
+  <div class="card"><div class="card-title">Сводная таблица по критериям</div><div style="overflow-x:auto"><table class="data-table" id="analytics-table"><thead></thead><tbody></tbody></table></div></div>
+</div>
+
+<!-- CABINET SCREEN -->
+<div class="screen" id="screen-cabinet">
+  <div class="card">
+    <div class="cabinet-header">
+      <div class="cabinet-avatar" id="cab-avatar">👤</div>
+      <div><div class="cabinet-name" id="cab-name">Выберите сотрудника</div><div class="cabinet-role">Личная аналитика и рекомендации</div></div>
+    </div>
+    <div class="form-row" style="margin-bottom:16px">
+      <div class="form-field"><label>Сотрудник</label><select id="cab-employee-select" onchange="renderCabinet()"><option value="">Выберите...</option></select></div>
+    </div>
+  </div>
+  <div id="cabinet-content" style="display:none">
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-value" id="cab-total">0</div><div class="kpi-label">Оценок</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="cab-avg" style="color:var(--chart-1)">0.0</div><div class="kpi-label">Средний балл</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="cab-eff" style="color:var(--warning)">0%</div><div class="kpi-label">Эффективность</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="cab-crit" style="color:var(--danger)">0</div><div class="kpi-label">Крит. провалов</div></div>
+    </div>
+    <div class="two-col">
+      <div class="card"><div class="card-title">Динамика оценок</div><svg class="mini-chart" viewBox="0 0 400 120" id="cab-trend-svg"></svg></div>
+      <div class="card"><div class="card-title">Слабые зоны (средние &lt; 7)</div><div id="cab-weak-zones"></div></div>
+    </div>
+    <div class="card"><div class="card-title">Средний балл по критериям</div><div id="cab-criteria-bars"></div></div>
+    <div class="card"><div class="card-title">Персональные рекомендации</div><div id="cab-recs"></div></div>
+    <div class="card"><div class="card-title">Последние оценки</div><div id="cab-recent"></div></div>
+  </div>
+  <div class="empty-state" id="cabinet-empty">Выберите сотрудника из списка выше, чтобы увидеть персональную аналитику.</div>
+</div>
+
+<!-- SETUP MODAL -->
+<div class="modal-overlay" id="setup-overlay" onclick="closeSetup()">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:500px">
+    <button class="modal-close" onclick="closeSetup()">×</button>
+    <h4 style="margin-bottom:8px">⚙️ Подключение Supabase</h4>
+    <p style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:12px">
+      1. Зарегистрируйтесь на <a href="https://supabase.com" target="_blank" style="color:var(--chart-1)">supabase.com</a><br>
+      2. Создайте проект → New Table "evaluations"<br>
+      3. Скопируйте URL и anon key из Settings → API<br>
+      4. Вставьте их ниже:
+    </p>
+    <div class="form-field" style="margin-bottom:8px"><label>Supabase URL</label><input type="text" id="setup-url" placeholder="https://xxxx.supabase.co"></div>
+    <div class="form-field" style="margin-bottom:12px"><label>Supabase Anon Key</label><input type="text" id="setup-key" placeholder="eyJ..."></div>
+    <button class="btn-primary" onclick="connectSupabase()">Подключить</button>
+  </div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = localStorage.getItem('sb_url') || '';
+const SUPABASE_KEY = localStorage.getItem('sb_key') || '';
+var supabase = window.supabase || null, useSupabase = false;
+if (SUPABASE_URL && SUPABASE_KEY && window.supabase) {
+  try { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); useSupabase = true;
+    document.getElementById('db-status').textContent = 'ONLINE (Supabase)';
+    document.getElementById('db-status').className = 'badge badge-online';
+  } catch(e) { console.error(e); }
+}
+
+const criteriaConfig = [
+  {id:1,name:"Приветствие + самопрезентация",cat:"Открытие",keywords:["добрый день","добрый","здравствуйте","меня зовут","компания","представиться","зовут"],anti:[],comments:{high:"Чёткое приветствие и представление",mid:"Приветствие есть, но можно лучше",low:"Слабое приветствие или отсутствие самопрезентации"}},
+  {id:2,name:"Подтверждение повода / истории контакта",cat:"Открытие",keywords:["ранее","письмо","отправляли","договаривались","связывались","переписка","обсуждали"],anti:["не помню","не знаю","уточнить","не со мной","не уверена"],comments:{high:"Уверенно подтвердила историю контакта",mid:"Упомянула историю, но без деталей",low:"Не смогла подтвердить факт предыдущего контакта"}},
+  {id:3,name:"Проверка права на разговор (ЛПР)",cat:"Открытие",keywords:["лпр","принимаете решения","ответственный","могу с вами","полномочия","вопросы по","вы решали"],anti:[],comments:{high:"Уточнила полномочия собеседника",mid:"Косвенно проверила ЛПР",low:"Не проверила, является ли собеседник ЛПР"}},
+  {id:4,name:"Выявление потребностей / парка клиента",cat:"Диагностика",keywords:["сколько","объём","масштаб","как часто","парк","оборудование","субподряд","мероприятия","бюджет","потребность"],anti:[],comments:{high:"Глубокая диагностика потребностей",mid:"Задала базовые вопросы",low:"Не выявила потребности клиента"}},
+  {id:5,name:"Презентация продукта / УТП",cat:"Презентация",keywords:["рации","интерком","интернет","браслеты","утп","предлагаем","решение","преимущество","выгода"],anti:["сумбурно","непонятно","вода"],comments:{high:"Чёткая презентация с привязкой к потребностям",mid:"Презентация есть, но без связки с клиентом",low:"Сумбурная или оторванная от потребностей презентация"}},
+  {id:6,name:"Отработка возражения «мы сами»",cat:"Презентация",keywords:["партнёрство","субподряд","пиковая нагрузка","подстраховка","расширение","совместно","выгодно"],anti:["игнор","проигнор","продолжила","скрипт"],comments:{high:"Убедительно отработала возражение",mid:"Попыталась ответить, но слабо",low:"Возражение проигнорировано или не отработано"}},
+  {id:7,name:"Владение деталями (почта, переписка)",cat:"Подготовка",keywords:["почта","email","@","отправляли","дата","имя","контакт"],anti:["не знаю","не помню","уточнить","не уверена"],comments:{high:"Полное владение деталями переписки",mid:"Частично помнит детали",low:"Не знает базовых деталей (почта, дата, имя)"}},
+  {id:8,name:"Фиксация контактных данных",cat:"Закрытие",keywords:["телефон","номер","мессенджер","whatsapp","telegram","почта","email","контакт","удобный канал"],anti:[],comments:{high:"Чётко зафиксировала все контакты",mid:"Зафиксировала частично",low:"Не уточнила контактные данные"}},
+  {id:9,name:"Договорённость о следующем шаге",cat:"Закрытие",keywords:["презентация","встреча","созвонимся","завтра","вторник","среда","четверг","пятница","15:00","время","конкретно"],anti:["позднее","потом","как-нибудь","размыто"],comments:{high:"Конкретный следующий шаг с дедлайном",mid:"Шаг обозначен, но сроки размыты",low:"Нет чёткого следующего шага"}},
+  {id:10,name:"Завершение разговора",cat:"Закрытие",keywords:["до свидания","спасибо","хорошего дня","всего доброго","всего хорошего","благодарю"],anti:["бросила трубку","резко","надоело"],comments:{high:"Вежливое и профессиональное завершение",mid:"Нейтральное завершение",low:"Резкое или непрофессиональное завершение"}}
+];
+
+const recTemplates = [
+  {prio:"🔴 КРИТИЧНО",zone:"Подготовка к «тёплой» базе",text:"Перед звонком обязательно поднимать историю касания (дата, имя контакта, что отправлялось).",deadline:"1–2 дня",type:"crit",check:(r)=>r.find(x=>x.id===2)?.score<5},
+  {prio:"🔴 КРИТИЧНО",zone:"Отработка возражений",text:"Подготовить 2–3 аргумента: субподряд на пиковую нагрузку, географическое расширение, доп. позиции.",deadline:"3–5 дней",type:"crit",check:(r)=>r.find(x=>x.id===6)?.score<5},
+  {prio:"🔴 КРИТИЧНО",zone:"Владение деталями",text:"Знать наизусть: почту отправки, дату, имя получателя. Проверять перед звонком.",deadline:"Немедленно",type:"crit",check:(r)=>r.find(x=>x.id===7)?.score<5},
+  {prio:"🟡 ВАЖНО",zone:"Презентация УТП",text:"Связывать презентацию с ответами клиента, а не читать скрипт. Использовать технику FAB.",deadline:"1 неделя",type:"warn",check:(r)=>{const s=r.find(x=>x.id===5)?.score;return s>=5&&s<7}},
+  {prio:"🟡 ВАЖНО",zone:"Фиксация дедлайнов",text:"Вместо «позднее» — конкретика: «Созвонимся во вторник в 15:00».",deadline:"Немедленно",type:"warn",check:(r)=>{const s=r.find(x=>x.id===9)?.score;return s>=5&&s<7}},
+  {prio:"🟢 РАЗВИТИЕ",zone:"Диагностика потребностей",text:"Углублять вопросы: бюджет, сроки, критерии выбора поставщика.",deadline:"2 недели",type:"good",check:(r)=>r.find(x=>x.id===4)?.score>=7}
+];
+
+let currentResult = null;
+let historyCache = [];
+
+function showNav(id, btn) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('screen-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+  if(id==='history') loadHistory();
+  if(id==='analytics') renderAnalytics();
+  if(id==='cabinet') initCabinet();
+}
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+}
+
+function analyzeTranscript(text) {
+  var words = text.split(/\s+/);
+  var totalWords = words.length;
+  var third = Math.floor(totalWords / 3) || 1;
+  var firstPart = words.slice(0, third).join(' ');
+  var secondPart = words.slice(third, third * 2).join(' ');
+  var thirdPart = words.slice(third * 2).join(' ');
+  var aggressionWords = ['что вы мне','какого','бред','глупость','не мешайте','надоело','хватит','зачем вы звоните','не интересно'];
+  var nervousMarkers = ['эээ','эмм','ну','короче','типа','значит','в общем','как бы','ну типа'];
+  var positiveWords = ['отлично','прекрасно','замечательно','рад','с удовольствием','интересно','полезно'];
+  var aggressionCount = 0, nervousCount = 0, positiveCount = 0;
+  aggressionWords.forEach(function(w) {
+    var re = new RegExp(w, 'g');
+    var m = text.match(re);
+    if(m) aggressionCount += m.length;
+  });
+  nervousMarkers.forEach(function(w) {
+    var re = new RegExp('\\b' + w + '\\b', 'g');
+    var m = text.match(re);
+    if(m) nervousCount += m.length;
+  });
+  positiveWords.forEach(function(w) {
+    var re = new RegExp(w, 'g');
+    var m = text.match(re);
+    if(m) positiveCount += m.length;
+  });
+  var questionCount = (text.match(/[?]/g) || []).length;
+  var totalParasites = nervousCount;
+  var lengthScore = totalWords < 50 ? 'short' : totalWords < 150 ? 'medium' : 'long';
+  var hasOpening = firstPart.includes('добрый') || firstPart.includes('здравствуйте') || firstPart.includes('меня зовут');
+  var hasClosing = thirdPart.includes('до свидания') || thirdPart.includes('спасибо') || thirdPart.includes('всего доброго') || thirdPart.includes('хорошего дня');
+  var hasMiddle = secondPart.includes('предлагаем') || secondPart.includes('рации') || secondPart.includes('интерком') || secondPart.includes('вопрос');
+  return {
+    totalWords: totalWords,
+    parts: { first: firstPart, second: secondPart, third: thirdPart },
+    tone: { aggression: aggressionCount, nervous: nervousCount, positive: positiveCount },
+    questions: questionCount,
+    structure: { hasOpening: hasOpening, hasMiddle: hasMiddle, hasClosing: hasClosing },
+    lengthScore: lengthScore
+  };
+}
+
+function evaluateCall() {
+  var rawText = document.getElementById('transcript-input').value.trim();
+  var text = rawText.toLowerCase();
+  if(!text){alert('Вставьте текст транскрипта');return}
+  document.getElementById('loading-overlay').classList.add('show');
+  setTimeout(function(){
+    var meta = analyzeTranscript(text);
+    var results = criteriaConfig.map(function(c) { return scoreCriterion(c, text, meta); });
+    var bonus = 0;
+    if(meta.tone.aggression > 0) bonus -= 3;
+    if(meta.tone.nervous > 5) bonus -= 2;
+    if(meta.questions >= 5) bonus += 2;
+    if(meta.structure.hasOpening && meta.structure.hasMiddle && meta.structure.hasClosing) bonus += 2;
+    if(meta.lengthScore === 'short') bonus -= 3;
+    var baseTotal = results.reduce(function(s,r) { return s + r.score; }, 0);
+    var adjustedTotal = Math.max(10, Math.min(100, baseTotal + bonus));
+    currentResult = {
+      id: Date.now(),
+      employee: document.getElementById('inp-employee').value || 'Неизвестно',
+      date: document.getElementById('inp-date').value || new Date().toISOString().split('T')[0],
+      client: document.getElementById('inp-client').value || '',
+      criteria: results,
+      meta: meta,
+      total: adjustedTotal,
+      avg: (adjustedTotal / results.length).toFixed(1),
+      eff: Math.round((adjustedTotal / 100) * 100),
+      critCount: results.filter(function(r) { return r.score < 6; }).length
+    };
+    renderResult(currentResult);
+    document.getElementById('loading-overlay').classList.remove('show');
+    document.getElementById('result-area').style.display = 'block';
+    document.getElementById('result-area').scrollIntoView({behavior:'smooth'});
+  }, 600);
+}
+
+function scoreCriterion(c, text, meta) {
+  var score = 5, found = 0, antiFound = 0;
+  var inFirst = c.keywords.some(function(k) { return meta.parts.first.includes(k); });
+  var inSecond = c.keywords.some(function(k) { return meta.parts.second.includes(k); });
+  var inThird = c.keywords.some(function(k) { return meta.parts.third.includes(k); });
+  c.keywords.forEach(function(k) { if(text.includes(k)) found++; });
+  c.anti.forEach(function(a) { if(text.includes(a)) antiFound++; });
+  if(found >= 3) score = 9;
+  else if(found >= 2) score = 8;
+  else if(found >= 1) score = 7;
+  else score = 4;
+  if(antiFound >= 1) score -= 3;
+  if(antiFound >= 2) score -= 2;
+  if(c.cat === 'Открытие' && !inFirst && found > 0) score -= 1;
+  if(c.cat === 'Закрытие' && !inThird && found > 0) score -= 1;
+  if(c.cat === 'Презентация' && !inSecond) score -= 1;
+  if(c.id === 2 && text.includes('не со мной')) score = 3;
+  if(c.id === 6 && (text.includes('сами') || text.includes('сами этим')) && found === 0) score = 2;
+  if(c.id === 7 && text.includes('уточнить по почте')) score = 3;
+  if(c.id === 9 && text.includes('позднее')) score = 5;
+  if(c.id === 9 && ((text.includes(':00') && /\d/.test(text)) || text.includes('завтра') || text.includes('вторник'))) score = 8;
+  if(c.id === 1 && meta.tone.nervous > 3) score -= 1;
+  if(c.id === 10 && meta.tone.aggression > 0) score -= 2;
+  score = Math.max(1, Math.min(10, Math.round(score)));
+  var comment = c.comments.mid;
+  if(score >= 8) comment = c.comments.high;
+  else if(score < 6) comment = c.comments.low;
+  return {...c, score: score, comment: comment, found: found, position: {first: inFirst, second: inSecond, third: inThird}};
+}
+
+function renderResult(res) {
+  document.getElementById('kpi-total').textContent=res.total+'/100';
+  document.getElementById('kpi-eff').textContent=res.eff+'%';
+  document.getElementById('kpi-eff').style.color=res.eff>=70?'var(--positive)':res.eff>=50?'var(--warning)':'var(--danger)';
+  document.getElementById('kpi-avg').textContent=res.avg;
+  document.getElementById('kpi-crit').textContent=res.critCount;
+  document.getElementById('kpi-words').textContent=res.meta ? res.meta.totalWords : 0;
+  document.getElementById('kpi-questions').textContent=res.meta ? res.meta.questions : 0;
+  renderRadar(res.criteria);
+  renderBarChart(res.criteria);
+  renderCriteriaList(res.criteria);
+  renderStatusLists(res.criteria);
+  renderRecommendations(res.criteria);
+}
+function renderRadar(data) {
+  const svg=document.getElementById('radar-svg');
+  const cx=150,cy=120,r=85,N=data.length;
+  let html='';
+  for(let level=2;level<=10;level+=2) html+=`<circle cx="${cx}" cy="${cy}" r="${r*level/10}" fill="none" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="2,2"/>`;
+  const points=[];
+  data.forEach((d,i)=>{
+    const angle=(Math.PI*2*i/N)-Math.PI/2;
+    const x=cx+r*Math.cos(angle),y=cy+r*Math.sin(angle);
+    html+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
+    const lx=cx+(r+14)*Math.cos(angle),ly=cy+(r+14)*Math.sin(angle);
+    html+=`<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="var(--text-tertiary)">${d.id}</text>`;
+    const vx=cx+(r*d.score/10)*Math.cos(angle),vy=cy+(r*d.score/10)*Math.sin(angle);
+    points.push(`${vx},${vy}`);
+    const color=d.score>=8?'var(--positive)':d.score>=6?'var(--warning)':'var(--danger)';
+    html+=`<circle cx="${vx}" cy="${vy}" r="3.5" fill="${color}" stroke="white" stroke-width="1.5"/>`;
+  });
+  html+=`<polygon points="${points.join(' ')}" fill="rgba(59,130,246,0.15)" stroke="var(--chart-1)" stroke-width="1.5"/>`;
+  svg.innerHTML=html;
+}
+function renderBarChart(data) {
+  const svg=document.getElementById('bar-svg');
+  const catMap={};
+  data.forEach(d=>{catMap[d.cat]=(catMap[d.cat]||0)+d.score});
+  const cats=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  const maxVal=Math.max(...cats.map(c=>c[1]));
+  const barH=30,gap=8,chartW=210,startX=65;
+  let html='';
+  const colors=['var(--chart-1)','var(--chart-2)','var(--chart-3)','var(--chart-4)','var(--chart-5)'];
+  cats.forEach((cat,i)=>{
+    const y=i*(barH+gap)+8;
+    const w=(cat[1]/maxVal)*chartW*0.72;
+    html+=`<rect x="${startX}" y="${y}" width="${w}" height="${barH}" rx="4" fill="${colors[i%colors.length]}"/>`;
+    html+=`<text x="${startX-5}" y="${y+barH/2+4}" text-anchor="end" font-size="10" font-weight="600" fill="var(--text-primary)">${cat[0]}</text>`;
+    html+=`<text x="${startX+w+5}" y="${y+barH/2+4}" font-size="11" font-weight="700" fill="var(--text-primary)">${cat[1]} б.</text>`;
+  });
+  svg.innerHTML=html;
+}
+function renderCriteriaList(data) {
+  const el=document.getElementById('criteria-list');
+  el.innerHTML='';
+  data.forEach(d=>{
+    const cls=d.score>=8?'good':d.score>=6?'mid':'bad';
+    const div=document.createElement('div');
+    div.className=`crit-row ${cls}`;
+    div.innerHTML=`<div class="crit-num">${d.id}</div><div class="crit-info"><div class="crit-name">${d.name}</div><div class="crit-cat">${d.cat}</div></div><div class="crit-bar-bg"><div class="crit-bar-fill" style="width:${d.score*10}%"></div></div><div class="crit-score">${d.score}</div>`;
+    div.onclick=()=>showModal(d);
+    el.appendChild(div);
+  });
+}
+function renderStatusLists(data) {
+  const strong=document.getElementById('strong-list');
+  const weak=document.getElementById('weak-list');
+  strong.innerHTML='';weak.innerHTML='';
+  data.filter(d=>d.score>=8).forEach(d=>{
+    const div=document.createElement('div');
+    div.style.cssText='padding:5px 0;font-size:12px;color:var(--text-secondary);border-bottom:1px solid var(--border)';
+    div.innerHTML=`<span style="color:var(--positive);font-weight:700">${d.score}</span> — ${d.name}`;
+    strong.appendChild(div);
+  });
+  data.filter(d=>d.score<6).forEach(d=>{
+    const div=document.createElement('div');
+    div.style.cssText='padding:5px 0;font-size:12px;color:var(--text-secondary);border-bottom:1px solid var(--border)';
+    div.innerHTML=`<span style="color:var(--danger);font-weight:700">${d.score}</span> — ${d.name}`;
+    weak.appendChild(div);
+  });
+}
+function renderRecommendations(data) {
+  var el = document.getElementById('rec-list');
+  el.innerHTML = '';
+  recTemplates.forEach(function(rec) {
+    if(rec.check(data)) {
+      var div = document.createElement('div');
+      div.className = 'rec-card ' + rec.type;
+      div.innerHTML = '<div class="rec-title">' + rec.prio + ' — ' + rec.zone + '</div><div class="rec-text">' + rec.text + '</div><div class="rec-meta">⏱ Срок: ' + rec.deadline + '</div>';
+      el.appendChild(div);
+    }
+  });
+  if(currentResult && currentResult.meta) {
+    var m = currentResult.meta;
+    if(m.tone.nervous > 5) {
+      var div = document.createElement('div');
+      div.className = 'rec-card crit';
+      div.innerHTML = '<div class="rec-title">🔴 КРИТИЧНО — Речевые паразиты</div><div class="rec-text">Обнаружено ' + m.tone.nervous + ' слов-паразитов («эээ», «ну», «короче»). Это снижает уверенность в глазах клиента. Потренируйтесь говорить без пауз.</div><div class="rec-meta">⏱ Срок: Немедленно</div>';
+      el.appendChild(div);
+    }
+    if(m.questions < 3) {
+      var div = document.createElement('div');
+      div.className = 'rec-card warn';
+      div.innerHTML = '<div class="rec-title">🟡 ВАЖНО — Мало вопросов</div><div class="rec-text">Задано только ' + m.questions + ' вопросов. Диагностика потребностей слабая. Используйте открытые вопросы: «Сколько...», «Как часто...», «Что для вас важно...»</div><div class="rec-meta">⏱ Срок: На следующем звонке</div>';
+      el.appendChild(div);
+    }
+    if(m.lengthScore === 'short') {
+      var div = document.createElement('div');
+      div.className = 'rec-card crit';
+      div.innerHTML = '<div class="rec-title">🔴 КРИТИЧНО — Короткий звонок</div><div class="rec-text">Транскрипт всего ' + m.totalWords + ' слов. Вероятно, звонок был сорван или менеджер не раскрыл тему. Минимальная норма — 150 слов.</div><div class="rec-meta">⏱ Срок: Немедленно</div>';
+      el.appendChild(div);
+    }
+    if(!m.structure.hasOpening || !m.structure.hasMiddle || !m.structure.hasClosing) {
+      var missing = [];
+      if(!m.structure.hasOpening) missing.push('приветствие');
+      if(!m.structure.hasMiddle) missing.push('презентация/диагностика');
+      if(!m.structure.hasClosing) missing.push('завершение');
+      var div = document.createElement('div');
+      div.className = 'rec-card warn';
+      div.innerHTML = '<div class="rec-title">🟡 ВАЖНО — Нарушена структура звонка</div><div class="rec-text">Отсутствуют этапы: ' + missing.join(', ') + '. Звонок должен идти по схеме: приветствие → диагностика → презентация → закрытие.</div><div class="rec-meta">⏱ Срок: 1 неделя</div>';
+      el.appendChild(div);
+    }
+  }
+  if(el.innerHTML === '') el.innerHTML = '<div class="rec-card good"><div class="rec-title">🎉 Отличный результат!</div><div class="rec-text">Критических проблем не выявлено. Рекомендуем закрепить текущий уровень.</div></div>';
+}
+
+async function loadHistory() {
+  if(useSupabase&&supabase){
+    const {data,error}=await supabase.from('evaluations').select('*').order('created_at',{ascending:false});
+    if(!error&&data) historyCache=data.map(d=>({...d,criteria:JSON.parse(d.criteria_json)}));
+    else historyCache=JSON.parse(localStorage.getItem('call_eval_history')||'[]');
+  } else historyCache=JSON.parse(localStorage.getItem('call_eval_history')||'[]');
+  updateFilterOptions();
+  renderHistory();
+}
+async function saveToHistory() {
+  if(!currentResult)return;
+  const payload={employee:currentResult.employee,date:currentResult.date,client:currentResult.client,total:currentResult.total,avg:currentResult.avg,eff:currentResult.eff,crit_count:currentResult.critCount,criteria_json:JSON.stringify(currentResult.criteria)};
+  if(useSupabase&&supabase){
+    const {error}=await supabase.from('evaluations').insert([payload]);
+    if(error){console.error(error);alert('Ошибка сохранения в Supabase');return}
+  } else {
+    historyCache.unshift({...currentResult,id:Date.now()});
+    localStorage.setItem('call_eval_history',JSON.stringify(historyCache));
+  }
+  alert('Сохранено!');
+}
+async function clearHistory() {
+  if(!confirm('Удалить всю историю?'))return;
+  if(useSupabase&&supabase) await supabase.from('evaluations').delete().neq('id',0);
+  historyCache=[];
+  localStorage.removeItem('call_eval_history');
+  renderHistory();
+  updateFilterOptions();
+}
+async function deleteHistoryItem(id) {
+  if(useSupabase&&supabase) await supabase.from('evaluations').delete().eq('id',id);
+  historyCache=historyCache.filter(h=>h.id!==id);
+  localStorage.setItem('call_eval_history',JSON.stringify(historyCache));
+  renderHistory();
+  updateFilterOptions();
+}
+function renderHistory() {
+  const empFilter=document.getElementById('filter-emp').value;
+  const probFilter=document.getElementById('filter-prob').value;
+  const fromDate=document.getElementById('filter-from').value;
+  const toDate=document.getElementById('filter-to').value;
+  let filtered=historyCache;
+  if(empFilter) filtered=filtered.filter(h=>h.employee===empFilter);
+  if(fromDate) filtered=filtered.filter(h=>h.date>=fromDate);
+  if(toDate) filtered=filtered.filter(h=>h.date<=toDate);
+  if(probFilter) filtered=filtered.filter(h=>{
+    if(probFilter==='good') return h.criteria.some(c=>c.score>=8);
+    if(probFilter==='mid') return h.criteria.some(c=>c.score>=6&&c.score<8);
+    if(probFilter==='bad') return h.criteria.some(c=>c.score<6);
+  });
+  const el=document.getElementById('history-list');
+  if(filtered.length===0){el.innerHTML='<div class="empty-state">Нет записей. Оцените первый звонок на вкладке «Оценить».</div>';return}
+  el.innerHTML='';
+  filtered.forEach(h=>{
+    const div=document.createElement('div');
+    div.className='history-item';
+    const color=h.eff>=70?'var(--positive)':h.eff>=50?'var(--warning)':'var(--danger)';
+    div.innerHTML=`<div class="history-date">${h.date}</div><div class="history-emp">${h.employee}${h.client?' → '+h.client:''}</div><div class="history-score" style="color:${color}">${h.total}</div><div class="history-eff" style="color:${color}">${h.eff}%</div><button class="btn-ghost" style="padding:4px 10px;font-size:11px" onclick="loadHistoryItem(${h.id})">Открыть</button><button class="btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteHistoryItem(${h.id})">×</button>`;
+    el.appendChild(div);
+  });
+}
+function updateFilterOptions() {
+  const select=document.getElementById('filter-emp');
+  const current=select.value;
+  const emps=[...new Set(historyCache.map(h=>h.employee))];
+  select.innerHTML='<option value="">Все</option>'+emps.map(e=>`<option value="${e}">${e}</option>`).join('');
+  select.value=current;
+}
+function loadHistoryItem(id) {
+  const item=historyCache.find(h=>h.id===id||h.id===String(id));
+  if(!item)return;
+  currentResult=item;
+  document.getElementById('inp-employee').value=item.employee;
+  document.getElementById('inp-date').value=item.date;
+  document.getElementById('inp-client').value=item.client||'';
+  showNav('evaluate', document.querySelector('[data-nav="evaluate"]'));
+  renderResult(item);
+  document.getElementById('result-area').style.display='block';
+}
+
+function renderAnalytics() {
+  if(historyCache.length===0){
+    document.getElementById('analytics-chart').innerHTML='<div class="empty-state">Нет данных для аналитики. Оцените хотя бы один звонок.</div>';
+    document.querySelector('#analytics-table thead').innerHTML='';
+    document.querySelector('#analytics-table tbody').innerHTML='';
+    return;
+  }
+  const empMap={};
+  historyCache.forEach(h=>{
+    if(!empMap[h.employee]) empMap[h.employee]={scores:[],criteria:{}};
+    empMap[h.employee].scores.push(h.total);
+    h.criteria.forEach(c=>{
+      if(!empMap[h.employee].criteria[c.id]) empMap[h.employee].criteria[c.id]=[];
+      empMap[h.employee].criteria[c.id].push(c.score);
+    });
+  });
+  const emps=Object.keys(empMap);
+  const avgTotals=emps.map(e=>(empMap[e].scores.reduce((a,b)=>a+b,0)/empMap[e].scores.length).toFixed(1));
+  const maxAvg=Math.max(...avgTotals.map(Number));
+  let svgHtml='';
+  const barH=28,gap=8,chartW=280,startX=90;
+  emps.forEach((emp,i)=>{
+    const y=i*(barH+gap)+10;
+    const w=(avgTotals[i]/maxAvg)*chartW*0.75;
+    const color=Number(avgTotals[i])>=70?'var(--positive)':Number(avgTotals[i])>=50?'var(--warning)':'var(--danger)';
+    svgHtml+=`<rect x="${startX}" y="${y}" width="${w}" height="${barH}" rx="4" fill="${color}"/>`;
+    svgHtml+=`<text x="${startX-6}" y="${y+barH/2+4}" text-anchor="end" font-size="11" font-weight="600" fill="var(--text-primary)">${emp}</text>`;
+    svgHtml+=`<text x="${startX+w+5}" y="${y+barH/2+4}" font-size="12" font-weight="700" fill="var(--text-primary)">${avgTotals[i]} б.</text>`;
+  });
+  document.getElementById('analytics-chart').innerHTML=`<svg class="chart-bar-svg" viewBox="0 0 420 ${emps.length*40+20}">${svgHtml}</svg>`;
+  const thead=document.querySelector('#analytics-table thead');
+  const tbody=document.querySelector('#analytics-table tbody');
+  let thHtml='<tr><th>Сотрудник</th>';
+  criteriaConfig.forEach(c=>thHtml+=`<th>${c.id}</th>`);
+  thHtml+='<th>Средний</th></tr>';
+  thead.innerHTML=thHtml;
+  let tbHtml='';
+  emps.forEach(emp=>{
+    tbHtml+=`<tr><td style="font-weight:600">${emp}</td>`;
+    let rowSum=0;
+    criteriaConfig.forEach(c=>{
+      const scores=empMap[emp].criteria[c.id]||[0];
+      const avg=(scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1);
+      rowSum+=Number(avg);
+      const cls=avg>=8?'score-good':avg>=6?'score-mid':'score-bad';
+      tbHtml+=`<td><span class="score-cell ${cls}">${avg}</span></td>`;
+    });
+    const rowAvg=(rowSum/10).toFixed(1);
+    const cls=rowAvg>=8?'score-good':rowAvg>=6?'score-mid':'score-bad';
+    tbHtml+=`<td><span class="score-cell ${cls}">${rowAvg}</span></td></tr>`;
+  });
+  tbody.innerHTML=tbHtml;
+}
+
+function initCabinet() {
+  const select=document.getElementById('cab-employee-select');
+  const emps=[...new Set(historyCache.map(h=>h.employee))];
+  select.innerHTML='<option value="">Выберите...</option>'+emps.map(e=>`<option value="${e}">${e}</option>`).join('');
+}
+function renderCabinet() {
+  const emp=document.getElementById('cab-employee-select').value;
+  if(!emp){document.getElementById('cabinet-content').style.display='none';document.getElementById('cabinet-empty').style.display='block';return}
+  document.getElementById('cabinet-empty').style.display='none';
+  document.getElementById('cabinet-content').style.display='block';
+  const empData=historyCache.filter(h=>h.employee===emp);
+  const totals=empData.map(h=>h.total);
+  const avgTotal=(totals.reduce((a,b)=>a+b,0)/totals.length).toFixed(1);
+  const avgEff=Math.round((avgTotal/100)*100);
+  const critTotal=empData.reduce((sum,h)=>sum+h.critCount,0);
+  document.getElementById('cab-name').textContent=emp;
+  document.getElementById('cab-avatar').textContent=emp.charAt(0).toUpperCase();
+  document.getElementById('cab-total').textContent=empData.length;
+  document.getElementById('cab-avg').textContent=avgTotal;
+  document.getElementById('cab-eff').textContent=avgEff+'%';
+  document.getElementById('cab-eff').style.color=avgEff>=70?'var(--positive)':avgEff>=50?'var(--warning)':'var(--danger)';
+  document.getElementById('cab-crit').textContent=critTotal;
+  renderCabinetTrend(empData);
+  renderCabinetWeakZones(empData);
+  renderCabinetCriteriaBars(empData);
+  renderCabinetRecs(empData);
+  renderCabinetRecent(empData);
+}
+function renderCabinetTrend(empData) {
+  const svg=document.getElementById('cab-trend-svg');
+  const sorted=[...empData].sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const vals=sorted.map(h=>h.total);
+  if(vals.length<2){svg.innerHTML='<text x="200" y="60" text-anchor="middle" fill="var(--text-tertiary)" font-size="12">Недостаточно данных</text>';return}
+  const minV=Math.min(...vals),maxV=Math.max(...vals);
+  const pad=20,W=400-pad*2,H=120-pad*2;
+  let html='';
+  html+=`<line x1="${pad}" y1="${pad+H}" x2="${pad+W}" y2="${pad+H}" stroke="var(--border)" stroke-width="0.5"/>`;
+  html+=`<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${pad+H}" stroke="var(--border)" stroke-width="0.5"/>`;
+  let d='';
+  vals.forEach((v,i)=>{
+    const x=pad+(i/(vals.length-1))*W;
+    const y=pad+H-((v-minV)/(maxV-minV||1))*H;
+    d+=(i===0?'M':'L')+`${x},${y}`;
+    html+=`<circle cx="${x}" cy="${y}" r="3" fill="var(--chart-1)"/>`;
+  });
+  html+=`<path d="${d}" fill="none" stroke="var(--chart-1)" stroke-width="2"/>`;
+  svg.innerHTML=html;
+}
+function renderCabinetWeakZones(empData) {
+  const el=document.getElementById('cab-weak-zones');
+  el.innerHTML='';
+  const critAvgs={};
+  criteriaConfig.forEach(c=>{
+    const scores=[];
+    empData.forEach(h=>{const found=h.criteria.find(x=>x.id===c.id);if(found)scores.push(found.score)});
+    if(scores.length) critAvgs[c.id]=(scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1);
+  });
+  const weak=Object.entries(critAvgs).filter(([id,avg])=>avg<7).sort((a,b)=>a[1]-b[1]);
+  if(weak.length===0){el.innerHTML='<div style="font-size:12px;color:var(--positive);font-weight:600">🎉 Все критерии на хорошем уровне!</div>';return}
+  weak.forEach(([id,avg])=>{
+    const c=criteriaConfig.find(x=>x.id===Number(id));
+    const color=avg<5?'var(--danger)':'var(--warning)';
+    const div=document.createElement('div');
+    div.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px';
+    div.innerHTML=`<span style="font-weight:700;color:${color};min-width:28px">${avg}</span><span style="color:var(--text-secondary)">${c.name}</span>`;
+    el.appendChild(div);
+  });
+}
+function renderCabinetCriteriaBars(empData) {
+  const el=document.getElementById('cab-criteria-bars');
+  el.innerHTML='';
+  criteriaConfig.forEach(c=>{
+    const scores=[];
+    empData.forEach(h=>{const found=h.criteria.find(x=>x.id===c.id);if(found)scores.push(found.score)});
+    if(!scores.length)return;
+    const avg=(scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1);
+    const color=avg>=8?'var(--positive)':avg>=6?'var(--warning)':'var(--danger)';
+    const div=document.createElement('div');
+    div.className='cab-crit-row';
+    div.innerHTML=`<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px"><span style="font-weight:600">${c.name}</span><span style="font-weight:700;color:${color}">${avg}</span></div><div class="cab-bar-bg"><div class="cab-bar-fill" style="width:${avg*10}%;background:${color}"></div></div>`;
+    el.appendChild(div);
+  });
+}
+function renderCabinetRecs(empData) {
+  const el=document.getElementById('cab-recs');
+  el.innerHTML='';
+  // Средние по критериям для рекомендаций
+  const avgMap={};
+  criteriaConfig.forEach(c=>{
+    const scores=[];
+    empData.forEach(h=>{const found=h.criteria.find(x=>x.id===c.id);if(found)scores.push(found.score)});
+    if(scores.length) avgMap[c.id]=(scores.reduce((a,b)=>a+b,0)/scores.length);
+  });
+  const mockRes=criteriaConfig.map(c=>({...c,score:avgMap[c.id]||5}));
+  recTemplates.forEach(rec=>{
+    if(rec.check(mockRes)){
+      const div=document.createElement('div');
+      div.className=`rec-card ${rec.type}`;
+      div.innerHTML=`<div class="rec-title">${rec.prio} — ${rec.zone}</div><div class="rec-text">${rec.text}</div><div class="rec-meta">⏱ Срок: ${rec.deadline}</div>`;
+      el.appendChild(div);
+    }
+  });
+  if(el.innerHTML==='') el.innerHTML='<div class="rec-card good"><div class="rec-title">🎉 Отличная динамика!</div><div class="rec-text">Критических проблем не выявлено. Продолжайте в том же духе.</div></div>';
+}
+function renderCabinetRecent(empData) {
+  const el=document.getElementById('cab-recent');
+  el.innerHTML='';
+  const sorted=[...empData].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
+  sorted.forEach(h=>{
+    const color=h.eff>=70?'var(--positive)':h.eff>=50?'var(--warning)':'var(--danger)';
+    const div=document.createElement('div');
+    div.className='history-item';
+    div.innerHTML=`<div class="history-date">${h.date}</div><div class="history-emp">${h.client||'Без клиента'}</div><div class="history-score" style="color:${color}">${h.total}</div><div class="history-eff" style="color:${color}">${h.eff}%</div>`;
+    el.appendChild(div);
+  });
+}
+
+function showSetup(){document.getElementById('setup-overlay').classList.add('show')}
+function closeSetup(){document.getElementById('setup-overlay').classList.remove('show')}
+async function connectSupabase(){
+  const url=document.getElementById('setup-url').value.trim();
+  const key=document.getElementById('setup-key').value.trim();
+  if(!url||!key){alert('Введите URL и ключ');return}
+  try{
+    const testClient=window.supabase.createClient(url,key);
+    const {error}=await testClient.from('evaluations').select('id').limit(1);
+    if(error&&error.code!=='PGRST116') throw error;
+    localStorage.setItem('sb_url',url);
+    localStorage.setItem('sb_key',key);
+    location.reload();
+  }catch(e){alert('Ошибка подключения: '+e.message)}
+}
+function exportResult(){
+  if(!currentResult)return;
+  const blob=new Blob([JSON.stringify(currentResult,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`оценка_звонка_${currentResult.employee}_${currentResult.date}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function showModal(d){
+  const color=d.score>=8?'var(--positive)':d.score>=6?'var(--warning)':'var(--danger)';
+  const bg=d.score>=8?'rgba(34,197,94,0.1)':d.score>=6?'rgba(245,158,11,0.1)':'rgba(239,68,68,0.1)';
+  const tag=d.score>=8?'Сильная сторона':d.score>=6?'Зона роста':'Критический провал';
+  document.getElementById('modal-content').innerHTML=`<div class="modal-tag" style="background:${bg};color:${color}">${tag}</div><div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px">${d.cat} | Критерий №${d.id}</div><h4 style="color:var(--text-primary);margin-top:4px">${d.name}</h4><div class="modal-score" style="color:${color}">${d.score}<span style="font-size:16px;color:var(--text-tertiary)">/10</span></div><p>${d.comment}</p>`;
+  document.getElementById('modal-overlay').classList.add('show');
+}
+function closeModal(){document.getElementById('modal-overlay').classList.remove('show')}
+function clearForm(){
+  document.getElementById('transcript-input').value='';
+  document.getElementById('inp-client').value='';
+  document.getElementById('result-area').style.display='none';
+}
+function showYandexHelp() {
+  alert("Как получить API-ключ Yandex SpeechKit:
+
+1. Зайдите на cloud.yandex.ru
+2. Создайте платежный аккаунт (стартовый грант 4000₽)
+3. Перейдите в AI Studio → Создать API-ключ
+4. Скопируйте ключ и вставьте сюда
+
+Стоимость: ~0.12₽/минута аудио");
+}
+
+async function transcribeAudio() {
+  var fileInput = document.getElementById('audio-input');
+  var apiKey = document.getElementById('yandex-api-key').value.trim();
+  var status = document.getElementById('transcribe-status');
+  var bar = document.getElementById('transcribe-bar');
+  var progress = document.getElementById('transcribe-progress');
+  var btn = document.getElementById('btn-transcribe');
+  if(!fileInput.files || !fileInput.files[0]){alert('Выберите аудио-файл');return}
+  if(!apiKey){alert('Введите API-ключ Yandex SpeechKit');return}
+  var file = fileInput.files[0];
+  if(file.size > 1024*1024*10){alert('Файл слишком большой (>10 МБ). Разрежьте на части.');return}
+  btn.disabled = true;
+  status.textContent = 'Чтение файла...';
+  progress.style.display = 'block';
+  bar.style.width = '20%';
+  try {
+    var arrayBuffer = await file.arrayBuffer();
+    var bytes = new Uint8Array(arrayBuffer);
+    var binary = '';
+    for(var i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    var base64 = btoa(binary);
+    bar.style.width = '50%';
+    status.textContent = 'Отправка в Yandex SpeechKit...';
+    var res = await fetch('/api/transcribe', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({audioBase64: base64, apiKey: apiKey})
+    });
+    bar.style.width = '80%';
+    var data = await res.json();
+    if(data.error || data.error_code) throw new Error(data.error_message || data.error || 'Ошибка распознавания');
+    var text = data.result || '';
+    document.getElementById('transcript-input').value = text;
+    bar.style.width = '100%';
+    status.textContent = '✅ Готово! Текст вставлен.';
+    setTimeout(function(){progress.style.display='none';bar.style.width='0%';}, 2000);
+  } catch(err) {
+    status.textContent = '❌ Ошибка: ' + err.message;
+    bar.style.width = '0%';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.addEventListener('click', function(e) {
+  var navBtn = e.target.closest('[data-nav]');
+  if(navBtn) { showNav(navBtn.dataset.nav, navBtn); return; }
+  var tabBtn = e.target.closest('[data-tab]');
+  if(tabBtn) { showTab(tabBtn.dataset.tab, tabBtn); return; }
+});
+
+if(useSupabase) loadHistory();
+</script>
+</body>
+</html>
