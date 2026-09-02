@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Оценка звонков — Альфаком</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 :root{--bg:#0a0a0f;--surface:rgba(255,255,255,0.03);--surface-hover:rgba(255,255,255,0.06);--border:rgba(255,255,255,0.08);--border-strong:rgba(255,255,255,0.15);--text-primary:#f0f0f5;--text-secondary:#8b8b9a;--text-tertiary:#5a5a6a;--positive:#22c55e;--warning:#f59e0b;--danger:#ef4444;--chart-1:#6366f1;--chart-2:#ec4899;--chart-3:#22c55e;--chart-4:#a855f7;--chart-5:#6b7280;--gradient-1:linear-gradient(135deg,#6366f1 0%,#a855f7 100%);--gradient-2:linear-gradient(135deg,#ec4899 0%,#f59e0b 100%);--gradient-3:linear-gradient(135deg,#22c55e 0%,#06b6d4 100%);--glass:rgba(255,255,255,0.04);--glass-border:rgba(255,255,255,0.08)}
@@ -201,7 +203,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     </div>
     <div id="tab-criteria" class="tab-panel"><div class="card"><div class="card-title">Детализация по критериям (нажмите для подробностей)</div><div class="crit-list" id="criteria-list"></div></div></div>
     <div id="tab-recommend" class="tab-panel"><div class="card"><div class="card-title">План действий</div><div id="rec-list"></div></div></div>
-    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn-primary" onclick="saveToHistory()">💾 Сохранить в историю</button><button class="btn-ghost" onclick="exportResult()">📥 Экспорт JSON</button></div>
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn-primary" onclick="saveToHistory()">💾 Сохранить в историю</button><button class="btn-ghost" onclick="exportPDF()">📄 Скачать PDF</button><button class="btn-ghost" onclick="exportResult()">📥 Экспорт JSON</button></div>
   </div>
 </div>
 
@@ -222,7 +224,13 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 
 <!-- ANALYTICS SCREEN -->
 <div class="screen" id="screen-analytics">
-  <div class="card"><div class="card-title">Сравнение сотрудников</div><div id="analytics-chart"></div></div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:0">Сравнение сотрудников</div>
+      <button class="btn-ghost" onclick="exportAnalyticsExcel()">📊 Скачать Excel</button>
+    </div>
+    <div id="analytics-chart"></div>
+  </div>
   <div class="card"><div class="card-title">Сводная таблица по критериям</div><div style="overflow-x:auto"><table class="data-table" id="analytics-table"><thead></thead><tbody></tbody></table></div></div>
 </div>
 
@@ -251,6 +259,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     <div class="card"><div class="card-title">Средний балл по критериям</div><div id="cab-criteria-bars"></div></div>
     <div class="card"><div class="card-title">Персональные рекомендации</div><div id="cab-recs"></div></div>
     <div class="card"><div class="card-title">Последние оценки</div><div id="cab-recent"></div></div>
+    <div class="card">
+      <div class="card-title">Сравнение звонков «до/после»</div>
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="form-field"><label>Звонок 1 (раньше)</label><select id="cab-compare-a" onchange="renderCabinetCompare()"></select></div>
+        <div class="form-field"><label>Звонок 2 (позже)</label><select id="cab-compare-b" onchange="renderCabinetCompare()"></select></div>
+      </div>
+      <div id="cab-compare-result"></div>
+    </div>
   </div>
   <div class="empty-state" id="cabinet-empty">Выберите сотрудника из списка выше, чтобы увидеть персональную аналитику.</div>
 </div>
@@ -304,14 +320,69 @@ const criteriaConfig = [
   {id:10,name:"Завершение разговора",cat:"Закрытие",keywords:["до свидания","спасибо","хорошего дня","всего доброго","всего хорошего","благодарю"],anti:["бросила трубку","резко","надоело"],comments:{high:"Вежливое и профессиональное завершение",mid:"Нейтральное завершение",low:"Резкое или непрофессиональное завершение"}}
 ];
 
-const recTemplates = [
-  {prio:"🔴 КРИТИЧНО",zone:"Подготовка к «тёплой» базе",text:"Перед звонком обязательно поднимать историю касания (дата, имя контакта, что отправлялось).",deadline:"1–2 дня",type:"crit",check:(r)=>r.find(x=>x.id===2)?.score<5},
-  {prio:"🔴 КРИТИЧНО",zone:"Отработка возражений",text:"Подготовить 2–3 аргумента: субподряд на пиковую нагрузку, географическое расширение, доп. позиции.",deadline:"3–5 дней",type:"crit",check:(r)=>r.find(x=>x.id===6)?.score<5},
-  {prio:"🔴 КРИТИЧНО",zone:"Владение деталями",text:"Знать наизусть: почту отправки, дату, имя получателя. Проверять перед звонком.",deadline:"Немедленно",type:"crit",check:(r)=>r.find(x=>x.id===7)?.score<5},
-  {prio:"🟡 ВАЖНО",zone:"Презентация УТП",text:"Связывать презентацию с ответами клиента, а не читать скрипт. Использовать технику FAB.",deadline:"1 неделя",type:"warn",check:(r)=>{const s=r.find(x=>x.id===5)?.score;return s>=5&&s<7}},
-  {prio:"🟡 ВАЖНО",zone:"Фиксация дедлайнов",text:"Вместо «позднее» — конкретика: «Созвонимся во вторник в 15:00».",deadline:"Немедленно",type:"warn",check:(r)=>{const s=r.find(x=>x.id===9)?.score;return s>=5&&s<7}},
-  {prio:"🟢 РАЗВИТИЕ",zone:"Диагностика потребностей",text:"Углублять вопросы: бюджет, сроки, критерии выбора поставщика.",deadline:"2 недели",type:"good",check:(r)=>r.find(x=>x.id===4)?.score>=7}
-];
+// Полная база рекомендаций по каждому из 10 критериев: crit (score<5), warn (5-6), good (>=8)
+const criteriaAdvice = {
+  1: {
+    zone: "Приветствие и самопрезентация",
+    crit: {text:"Приветствие или представление отсутствует. Начинайте каждый звонок с формулы «Добрый день + имя + компания» — это база доверия в первые секунды разговора.", deadline:"Немедленно"},
+    warn: {text:"Приветствие смазанное или неполное. Чётко называйте имя и компанию до того, как переходить к сути звонка.", deadline:"На следующем звонке"},
+    good: {text:"Приветствие и самопрезентация — сильная сторона. Держите этот темп на всех звонках, включая повторные.", deadline:"Поддерживать"}
+  },
+  2: {
+    zone: "Подтверждение повода / истории контакта",
+    crit: {text:"Перед звонком обязательно поднимайте историю касания: дату, имя контакта, что именно отправлялось. Без этого клиент не понимает, почему вы звоните именно ему.", deadline:"1–2 дня"},
+    warn: {text:"История контакта упомянута без деталей. Уточняйте конкретику — когда именно и что обсуждали в прошлый раз, это добавляет доверия.", deadline:"1 неделя"},
+    good: {text:"Хорошо подтверждаете повод звонка — клиент сразу понимает контекст. Сохраняйте эту привычку.", deadline:"Поддерживать"}
+  },
+  3: {
+    zone: "Проверка права на разговор (ЛПР)",
+    crit: {text:"Не выяснено, общаетесь ли вы с человеком, принимающим решения. Спрашивайте прямо: «Вы принимаете решение по этому вопросу?» — иначе весь звонок может уйти впустую.", deadline:"Немедленно"},
+    warn: {text:"Право на разговор проверено лишь косвенно. Задавайте вопрос про полномочия открытым текстом, не полагайтесь на предположения.", deadline:"На следующем звонке"},
+    good: {text:"ЛПР проверяется чётко и своевременно — это экономит время на дальнейших этапах воронки.", deadline:"Поддерживать"}
+  },
+  4: {
+    zone: "Выявление потребностей / парка клиента",
+    crit: {text:"Потребности клиента не выяснены. Прежде чем предлагать продукт, спрашивайте про объём, парк оборудования и периодичность задач.", deadline:"1 неделя"},
+    warn: {text:"Заданы только базовые вопросы. Углубляйте диагностику: бюджет, сроки, критерии выбора поставщика.", deadline:"2 недели"},
+    good: {text:"Глубокая диагностика потребностей — сильная сторона. Продолжайте копать в сторону бюджета и сроков принятия решения.", deadline:"Поддерживать"}
+  },
+  5: {
+    zone: "Презентация продукта / УТП",
+    crit: {text:"Презентация продукта отсутствует или потерялась в разговоре. Чётко проговаривайте, что вы предлагаете и какую задачу клиента это решает.", deadline:"3–5 дней"},
+    warn: {text:"Презентация есть, но не связана с ответами клиента. Используйте технику FAB (свойство → преимущество → выгода) и ссылайтесь на то, что клиент сказал ранее.", deadline:"1 неделя"},
+    good: {text:"Презентация чётко привязана к потребностям клиента — именно так и нужно продавать. Держите этот стандарт.", deadline:"Поддерживать"}
+  },
+  6: {
+    zone: "Отработка возражения «мы сами»",
+    crit: {text:"Возражение проигнорировано или не отработано. Подготовьте 2–3 готовых аргумента: субподряд на пиковую нагрузку, географическое расширение, дополнительные позиции.", deadline:"3–5 дней"},
+    warn: {text:"Попытка отработать возражение слабая. Используйте заготовленные аргументы вместо импровизации: подстраховка на пике нагрузки, совместная работа, а не полная замена.", deadline:"1 неделя"},
+    good: {text:"Возражение «мы сами» отрабатывается убедительно. Зафиксируйте эту формулировку как эталон для команды.", deadline:"Поддерживать"}
+  },
+  7: {
+    zone: "Владение деталями (почта, переписка)",
+    crit: {text:"Базовые детали переписки неизвестны — почта, дата, имя получателя. Проверяйте карточку клиента в CRM перед каждым звонком.", deadline:"Немедленно"},
+    warn: {text:"Детали переписки помнит частично. Сверяйтесь с CRM перед звонком, чтобы не переспрашивать у клиента то, что уже обсуждалось.", deadline:"1 неделя"},
+    good: {text:"Отличное владение деталями переписки — клиент чувствует, что его помнят. Так держать.", deadline:"Поддерживать"}
+  },
+  8: {
+    zone: "Фиксация контактных данных",
+    crit: {text:"Контактные данные клиента не зафиксированы. Уточняйте телефон, удобный мессенджер и почту — без этого лид нельзя вести дальше по воронке.", deadline:"Немедленно"},
+    warn: {text:"Контакты зафиксированы частично. Уточняйте предпочитаемый канал связи (WhatsApp, Telegram, почта), чтобы не терять клиента между звонками.", deadline:"На следующем звонке"},
+    good: {text:"Контакты фиксируются полно и аккуратно — база данных остаётся чистой. Продолжайте в том же духе.", deadline:"Поддерживать"}
+  },
+  9: {
+    zone: "Договорённость о следующем шаге",
+    crit: {text:"Следующий шаг не согласован. Звонок не должен заканчиваться без конкретной даты и времени следующего контакта.", deadline:"Немедленно"},
+    warn: {text:"Следующий шаг обозначен, но сроки размыты. Вместо «созвонимся позже» называйте точный день и время: «во вторник в 15:00».", deadline:"Немедленно"},
+    good: {text:"Следующий шаг фиксируется чётко и конкретно — так и нужно закрывать разговор. Держите стандарт.", deadline:"Поддерживать"}
+  },
+  10: {
+    zone: "Завершение разговора",
+    crit: {text:"Разговор завершён резко или непрофессионально. Всегда благодарите клиента и желайте хорошего дня — это формирует лояльность даже при отказе.", deadline:"Немедленно"},
+    warn: {text:"Завершение нейтральное. Добавьте тёплую фразу благодарности, чтобы разговор оставил приятное впечатление вне зависимости от результата.", deadline:"На следующем звонке"},
+    good: {text:"Разговор завершается вежливо и профессионально — хороший финальный штрих. Сохраняйте этот стандарт.", deadline:"Поддерживать"}
+  }
+};
 
 let currentResult = null;
 let historyCache = [];
@@ -523,46 +594,55 @@ function renderStatusLists(data) {
 function renderRecommendations(data) {
   var el = document.getElementById('rec-list');
   el.innerHTML = '';
-  recTemplates.forEach(function(rec) {
-    if(rec.check(data)) {
-      var div = document.createElement('div');
-      div.className = 'rec-card ' + rec.type;
-      div.innerHTML = '<div class="rec-title">' + rec.prio + ' — ' + rec.zone + '</div><div class="rec-text">' + rec.text + '</div><div class="rec-meta">⏱ Срок: ' + rec.deadline + '</div>';
-      el.appendChild(div);
+  var critCards = [], warnCards = [], goodCards = [];
+
+  function makeCard(prio, zone, text, deadline, type) {
+    return '<div class="rec-card ' + type + '"><div class="rec-title">' + prio + ' — ' + zone + '</div><div class="rec-text">' + text + '</div><div class="rec-meta">⏱ Срок: ' + deadline + '</div></div>';
+  }
+
+  // Рекомендации по каждому из 10 критериев — покрывают всю рубрику, а не только часть
+  data.criteria.forEach(function(r) {
+    var advice = criteriaAdvice[r.id];
+    if(!advice) return;
+    if(r.score < 5) {
+      critCards.push(makeCard('🔴 КРИТИЧНО', advice.zone, advice.crit.text, advice.crit.deadline, 'crit'));
+    } else if(r.score < 7) {
+      warnCards.push(makeCard('🟡 ВАЖНО', advice.zone, advice.warn.text, advice.warn.deadline, 'warn'));
+    } else if(r.score >= 8) {
+      goodCards.push({score: r.score, html: makeCard('🟢 СИЛЬНАЯ СТОРОНА', advice.zone, advice.good.text, advice.good.deadline, 'good')});
     }
   });
+
+  // Рекомендации по общим показателям звонка (тон, структура, длина)
   if(currentResult && currentResult.meta) {
     var m = currentResult.meta;
+    if(m.tone.aggression > 0) {
+      critCards.push(makeCard('🔴 КРИТИЧНО', 'Тон разговора', 'В звонке зафиксированы признаки конфликта или раздражения со стороны клиента (' + m.tone.aggression + '). Разберите запись с руководителем: возможно, нужна отдельная работа с возражением или извинение.', 'Немедленно', 'crit'));
+    }
     if(m.tone.nervous > 5) {
-      var div = document.createElement('div');
-      div.className = 'rec-card crit';
-      div.innerHTML = '<div class="rec-title">🔴 КРИТИЧНО — Речевые паразиты</div><div class="rec-text">Обнаружено ' + m.tone.nervous + ' слов-паразитов («эээ», «ну», «короче»). Это снижает уверенность в глазах клиента. Потренируйтесь говорить без пауз.</div><div class="rec-meta">⏱ Срок: Немедленно</div>';
-      el.appendChild(div);
+      critCards.push(makeCard('🔴 КРИТИЧНО', 'Речевые паразиты', 'Обнаружено ' + m.tone.nervous + ' слов-паразитов («эээ», «ну», «короче»). Это снижает уверенность в глазах клиента. Потренируйтесь проговаривать презентацию вслух без пауз-заполнителей.', 'Немедленно', 'crit'));
     }
     if(m.questions < 3) {
-      var div = document.createElement('div');
-      div.className = 'rec-card warn';
-      div.innerHTML = '<div class="rec-title">🟡 ВАЖНО — Мало вопросов</div><div class="rec-text">Задано только ' + m.questions + ' вопросов. Диагностика потребностей слабая. Используйте открытые вопросы: «Сколько...», «Как часто...», «Что для вас важно...»</div><div class="rec-meta">⏱ Срок: На следующем звонке</div>';
-      el.appendChild(div);
+      warnCards.push(makeCard('🟡 ВАЖНО', 'Мало вопросов клиенту', 'Задано только ' + m.questions + ' вопрос(а). Диагностика потребностей слабая. Используйте открытые вопросы: «Сколько...», «Как часто...», «Что для вас важно при выборе...»', 'На следующем звонке', 'warn'));
     }
     if(m.lengthScore === 'short') {
-      var div = document.createElement('div');
-      div.className = 'rec-card crit';
-      div.innerHTML = '<div class="rec-title">🔴 КРИТИЧНО — Короткий звонок</div><div class="rec-text">Транскрипт всего ' + m.totalWords + ' слов. Вероятно, звонок был сорван или менеджер не раскрыл тему. Минимальная норма — 150 слов.</div><div class="rec-meta">⏱ Срок: Немедленно</div>';
-      el.appendChild(div);
+      critCards.push(makeCard('🔴 КРИТИЧНО', 'Короткий звонок', 'Транскрипт всего ' + m.totalWords + ' слов. Вероятно, звонок был сорван или менеджер не успел раскрыть тему. Минимальная содержательная норма — около 150 слов.', 'Немедленно', 'crit'));
     }
     if(!m.structure.hasOpening || !m.structure.hasMiddle || !m.structure.hasClosing) {
       var missing = [];
       if(!m.structure.hasOpening) missing.push('приветствие');
       if(!m.structure.hasMiddle) missing.push('презентация/диагностика');
       if(!m.structure.hasClosing) missing.push('завершение');
-      var div = document.createElement('div');
-      div.className = 'rec-card warn';
-      div.innerHTML = '<div class="rec-title">🟡 ВАЖНО — Нарушена структура звонка</div><div class="rec-text">Отсутствуют этапы: ' + missing.join(', ') + '. Звонок должен идти по схеме: приветствие → диагностика → презентация → закрытие.</div><div class="rec-meta">⏱ Срок: 1 неделя</div>';
-      el.appendChild(div);
+      warnCards.push(makeCard('🟡 ВАЖНО', 'Нарушена структура звонка', 'Не обнаружены этапы: ' + missing.join(', ') + '. Звонок должен идти по схеме: приветствие → диагностика → презентация → закрытие.', '1 неделя', 'warn'));
     }
   }
-  if(el.innerHTML === '') el.innerHTML = '<div class="rec-card good"><div class="rec-title">🎉 Отличный результат!</div><div class="rec-text">Критических проблем не выявлено. Рекомендуем закрепить текущий уровень.</div></div>';
+
+  // Сначала критично, потом важно, затем — не больше 2 сильных сторон, чтобы не перегружать список
+  goodCards.sort(function(a,b){ return b.score - a.score; });
+  var topGood = goodCards.slice(0, 2).map(function(g){ return g.html; });
+
+  var allHtml = critCards.join('') + warnCards.join('') + topGood.join('');
+  el.innerHTML = allHtml || '<div class="rec-card good"><div class="rec-title">🎉 Отличный результат!</div><div class="rec-text">Критических проблем не выявлено. Рекомендуем закрепить текущий уровень и поделиться подходом с командой.</div></div>';
 }
 
 async function loadHistory() {
@@ -726,6 +806,60 @@ function renderCabinet() {
   renderCabinetCriteriaBars(empData);
   renderCabinetRecs(empData);
   renderCabinetRecent(empData);
+  populateCabinetCompare(empData);
+}
+function populateCabinetCompare(empData) {
+  const selA=document.getElementById('cab-compare-a');
+  const selB=document.getElementById('cab-compare-b');
+  const sorted=[...empData].sort((a,b)=>new Date(a.date)-new Date(b.date));
+  if(sorted.length<2){
+    selA.innerHTML='<option value="">—</option>';
+    selB.innerHTML='<option value="">—</option>';
+    document.getElementById('cab-compare-result').innerHTML='<div class="empty-state">Нужно минимум 2 оценённых звонка сотрудника, чтобы сравнить динамику.</div>';
+    return;
+  }
+  const opts=sorted.map(h=>`<option value="${h.id}">${h.date} — ${h.total} б.${h.client?' ('+h.client+')':''}</option>`).join('');
+  selA.innerHTML=opts;
+  selB.innerHTML=opts;
+  selA.value=sorted[0].id;
+  selB.value=sorted[sorted.length-1].id;
+  renderCabinetCompare();
+}
+function renderCabinetCompare() {
+  const el=document.getElementById('cab-compare-result');
+  const emp=document.getElementById('cab-employee-select').value;
+  const empData=historyCache.filter(h=>h.employee===emp);
+  const idA=document.getElementById('cab-compare-a').value;
+  const idB=document.getElementById('cab-compare-b').value;
+  if(!idA||!idB)return;
+  const a=empData.find(h=>String(h.id)===String(idA));
+  const b=empData.find(h=>String(h.id)===String(idB));
+  if(!a||!b)return;
+  if(a.id===b.id){el.innerHTML='<div class="empty-state">Выберите два разных звонка для сравнения.</div>';return}
+  const totalDiff=b.total-a.total;
+  const diffColor=totalDiff>0?'var(--positive)':totalDiff<0?'var(--danger)':'var(--text-secondary)';
+  const diffArrow=totalDiff>0?'↑':totalDiff<0?'↓':'→';
+  let rowsHtml='';
+  criteriaConfig.forEach(c=>{
+    const sa=a.criteria.find(x=>x.id===c.id)?.score ?? 0;
+    const sb=b.criteria.find(x=>x.id===c.id)?.score ?? 0;
+    const diff=sb-sa;
+    const color=diff>0?'var(--positive)':diff<0?'var(--danger)':'var(--text-tertiary)';
+    const arrow=diff>0?'↑':diff<0?'↓':'→';
+    rowsHtml+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:12px;color:var(--text-secondary);flex:1">${c.name}</div>
+      <div style="font-size:12px;font-weight:700;width:24px;text-align:center">${sa}</div>
+      <div style="font-size:11px;color:var(--text-tertiary)">→</div>
+      <div style="font-size:12px;font-weight:700;width:24px;text-align:center">${sb}</div>
+      <div style="font-size:12px;font-weight:700;color:${color};width:52px;text-align:right">${arrow} ${diff>0?'+':''}${diff}</div>
+    </div>`;
+  });
+  el.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--surface);border-radius:12px;margin-bottom:12px">
+      <div><div style="font-size:11px;color:var(--text-tertiary)">${a.date} → ${b.date}</div><div style="font-size:13px;font-weight:700">Суммарный балл: ${a.total} → ${b.total}</div></div>
+      <div style="font-size:20px;font-weight:800;color:${diffColor}">${diffArrow} ${totalDiff>0?'+':''}${totalDiff}</div>
+    </div>
+    ${rowsHtml}`;
 }
 function renderCabinetTrend(empData) {
   const svg=document.getElementById('cab-trend-svg');
@@ -792,16 +926,20 @@ function renderCabinetRecs(empData) {
     empData.forEach(h=>{const found=h.criteria.find(x=>x.id===c.id);if(found)scores.push(found.score)});
     if(scores.length) avgMap[c.id]=(scores.reduce((a,b)=>a+b,0)/scores.length);
   });
-  const mockRes=criteriaConfig.map(c=>({...c,score:avgMap[c.id]||5}));
-  recTemplates.forEach(rec=>{
-    if(rec.check(mockRes)){
-      const div=document.createElement('div');
-      div.className=`rec-card ${rec.type}`;
-      div.innerHTML=`<div class="rec-title">${rec.prio} — ${rec.zone}</div><div class="rec-text">${rec.text}</div><div class="rec-meta">⏱ Срок: ${rec.deadline}</div>`;
-      el.appendChild(div);
-    }
+  const critCards=[], warnCards=[], goodCards=[];
+  criteriaConfig.forEach(c=>{
+    const advice=criteriaAdvice[c.id];
+    const avg=avgMap[c.id];
+    if(!advice || avg===undefined) return;
+    const card=(prio,zone,text,deadline,type)=>`<div class="rec-card ${type}"><div class="rec-title">${prio} — ${zone}</div><div class="rec-text">${text}</div><div class="rec-meta">⏱ Срок: ${deadline}</div></div>`;
+    if(avg<5) critCards.push(card('🔴 КРИТИЧНО',advice.zone,advice.crit.text,advice.crit.deadline,'crit'));
+    else if(avg<7) warnCards.push(card('🟡 ВАЖНО',advice.zone,advice.warn.text,advice.warn.deadline,'warn'));
+    else if(avg>=8) goodCards.push({avg,html:card('🟢 СИЛЬНАЯ СТОРОНА',advice.zone,advice.good.text,advice.good.deadline,'good')});
   });
-  if(el.innerHTML==='') el.innerHTML='<div class="rec-card good"><div class="rec-title">🎉 Отличная динамика!</div><div class="rec-text">Критических проблем не выявлено. Продолжайте в том же духе.</div></div>';
+  goodCards.sort((a,b)=>b.avg-a.avg);
+  const topGood=goodCards.slice(0,2).map(g=>g.html);
+  const allHtml=critCards.join('')+warnCards.join('')+topGood.join('');
+  el.innerHTML=allHtml || '<div class="rec-card good"><div class="rec-title">🎉 Отличная динамика!</div><div class="rec-text">Критических проблем не выявлено по среднему за период. Продолжайте в том же духе.</div></div>';
 }
 function renderCabinetRecent(empData) {
   const el=document.getElementById('cab-recent');
@@ -840,6 +978,94 @@ function exportResult(){
   a.download=`оценка_звонка_${currentResult.employee}_${currentResult.date}.json`;
   a.click();
   URL.revokeObjectURL(url);
+}
+function exportPDF(){
+  if(!currentResult){alert('Нет данных для экспорта. Сначала оцените звонок.');return}
+  const r=currentResult;
+  const scoreColor=r.total>=70?'#16a34a':r.total>=50?'#d97706':'#dc2626';
+  const critRows=r.criteria.map(c=>{
+    const cColor=c.score>=8?'#16a34a':c.score>=6?'#d97706':'#dc2626';
+    return `<tr><td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;white-space:nowrap">${c.cat}</td><td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#111827">${c.name}</td><td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700;font-size:12px;color:${cColor}">${c.score}/10</td><td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#374151">${c.comment}</td></tr>`;
+  }).join('');
+  const recEl=document.getElementById('rec-list');
+  let recHtml='<div style="font-size:11px;color:#6b7280">Нет рекомендаций</div>';
+  if(recEl && recEl.children.length){
+    recHtml=Array.from(recEl.children).map(card=>{
+      const title=card.querySelector('.rec-title')?.textContent||'';
+      const text=card.querySelector('.rec-text')?.textContent||'';
+      const meta=card.querySelector('.rec-meta')?.textContent||'';
+      return `<div style="margin-bottom:8px;padding:8px 12px;border-left:3px solid #6366f1;background:#f9fafb;border-radius:0 6px 6px 0"><div style="font-weight:700;font-size:11px;color:#111827;margin-bottom:3px">${title}</div><div style="font-size:10px;color:#374151;margin-bottom:3px;line-height:1.5">${text}</div>${meta?`<div style="font-size:9px;color:#9ca3af">${meta}</div>`:''}</div>`;
+    }).join('');
+  }
+  const container=document.createElement('div');
+  container.style.cssText='position:fixed;left:-9999px;top:0;width:750px;background:#ffffff;color:#111827;font-family:Arial,Helvetica,sans-serif;padding:32px;';
+  container.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111827;padding-bottom:12px;margin-bottom:20px">
+      <div>
+        <div style="font-size:20px;font-weight:800">Оценка звонка</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:4px">Аналитика звонков — Альфаком</div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:#6b7280;line-height:1.6">
+        <div>Сотрудник: <b style="color:#111827">${r.employee}</b></div>
+        <div>Клиент: <b style="color:#111827">${r.client||'—'}</b></div>
+        <div>Дата: <b style="color:#111827">${r.date}</b></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;margin-bottom:24px">
+      <div style="flex:1;text-align:center;padding:14px;background:#f9fafb;border-radius:10px">
+        <div style="font-size:26px;font-weight:800;color:${scoreColor}">${r.total}/100</div>
+        <div style="font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px">Суммарный балл</div>
+      </div>
+      <div style="flex:1;text-align:center;padding:14px;background:#f9fafb;border-radius:10px">
+        <div style="font-size:26px;font-weight:800;color:#111827">${r.avg}</div>
+        <div style="font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px">Средний балл</div>
+      </div>
+      <div style="flex:1;text-align:center;padding:14px;background:#f9fafb;border-radius:10px">
+        <div style="font-size:26px;font-weight:800;color:${r.critCount>0?'#dc2626':'#16a34a'}">${r.critCount}</div>
+        <div style="font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px">Крит. провалов</div>
+      </div>
+    </div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:#111827">Детализация по критериям</div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
+      <thead><tr><th style="text-align:left;padding:6px 8px;font-size:9px;color:#9ca3af;text-transform:uppercase">Блок</th><th style="text-align:left;padding:6px 8px;font-size:9px;color:#9ca3af;text-transform:uppercase">Критерий</th><th style="padding:6px 8px;font-size:9px;color:#9ca3af;text-transform:uppercase">Балл</th><th style="text-align:left;padding:6px 8px;font-size:9px;color:#9ca3af;text-transform:uppercase">Комментарий</th></tr></thead>
+      <tbody>${critRows}</tbody>
+    </table>
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:#111827">Рекомендации</div>
+    ${recHtml}
+  `;
+  document.body.appendChild(container);
+  const opt={margin:10,filename:`оценка_звонка_${r.employee}_${r.date}.pdf`,image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}};
+  html2pdf().set(opt).from(container).save().then(()=>{document.body.removeChild(container)}).catch(()=>{document.body.removeChild(container);alert('Не удалось сформировать PDF')});
+}
+function exportAnalyticsExcel(){
+  if(historyCache.length===0){alert('Нет данных для экспорта. Сначала оцените хотя бы один звонок.');return}
+  const empMap={};
+  historyCache.forEach(h=>{
+    if(!empMap[h.employee]) empMap[h.employee]={scores:[],criteria:{},count:0,critTotal:0};
+    empMap[h.employee].scores.push(h.total);
+    empMap[h.employee].count++;
+    empMap[h.employee].critTotal+=(h.critCount||0);
+    h.criteria.forEach(c=>{
+      if(!empMap[h.employee].criteria[c.id]) empMap[h.employee].criteria[c.id]=[];
+      empMap[h.employee].criteria[c.id].push(c.score);
+    });
+  });
+  const emps=Object.keys(empMap);
+  const header=['Сотрудник','Звонков','Средний балл','Крит. провалов',...criteriaConfig.map(c=>`№${c.id} ${c.name}`)];
+  const rows=[header];
+  emps.forEach(emp=>{
+    const avgTotal=Number((empMap[emp].scores.reduce((a,b)=>a+b,0)/empMap[emp].scores.length).toFixed(1));
+    const criteriaAvgs=criteriaConfig.map(c=>{
+      const scores=empMap[emp].criteria[c.id]||[];
+      return scores.length ? Number((scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1)) : '';
+    });
+    rows.push([emp,empMap[emp].count,avgTotal,empMap[emp].critTotal,...criteriaAvgs]);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=header.map((h,i)=>({wch:i===0?20:14}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Сводка');
+  XLSX.writeFile(wb,`аналитика_звонков_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 function showModal(d){
   const color=d.score>=8?'var(--positive)':d.score>=6?'var(--warning)':'var(--danger)';
